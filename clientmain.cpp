@@ -21,14 +21,30 @@ const int MAXDATASIZE = 256;
 
 int main(int argc, char *argv[])
 {
-
+  if (argc != 2) 
+  {
+    fprintf(stderr,"usage: %s host:port (%d)\n",argv[0],argc);
+	  exit(1);
+	}
   /*
     Read first input, assumes <ip>:<port> syntax, convert into one string (Desthost) and one integer (port). 
      Atm, works only on dotted notation, i.e. IPv4 and DNS. IPv6 does not work if its using ':'. 
   */
+
+  char buf[MAXDATASIZE];
   char delim[]=":";
+  char msg[] = "OK\n";
   char *Desthost=strtok(argv[1],delim);
   char *Destport=strtok(NULL,delim);
+  double f1,f2,floatRes;
+  int i1,i2,intRes,rv,sockfd;
+  struct addrinfo hints, *servinfo, *p;
+  
+  if ((rv = getaddrinfo(Desthost, Destport, &hints, &servinfo)) != 0) 
+  {
+		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+		return 1;
+	}
 
   if (Desthost==NULL)
   {
@@ -38,38 +54,14 @@ int main(int argc, char *argv[])
   {
     Destport = (char*)"0";
   }
-  
-  
-  int sockfd;
-	struct addrinfo hints, *servinfo, *p;
-	int rv;
-	char buf[MAXDATASIZE];
-  char e621[] = "OK\n";
 
-	if (argc != 2) 
-  {
-	  printf("Try again, enter host and port\n");
-	  exit(1);
-	}
-  else
-  {
-    int port=atoi(Destport);
-    #ifdef DEBUG 
-    printf("Host %s, and port %d.\n",Desthost,port);
-    #endif
-  }
+  int port=atoi(Destport);
+  printf("Host %s, and port %d.\n",Desthost,port);
 
 	memset(&hints, 0, sizeof hints);
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_socktype = SOCK_STREAM;
 
-	if ((rv = getaddrinfo(Desthost, Destport, &hints, &servinfo)) != 0) 
-  {
-		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
-		return 1;
-	}
-
-	// loop through all the results and make a socket
 	for(p = servinfo; p != NULL; p = p->ai_next) 
   {
 		if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) 
@@ -85,18 +77,17 @@ int main(int argc, char *argv[])
     continue;
 
 	  }
-    
-
 		break;
 	}
 
-  printf("Managed to create socket\n");
-
 	if (p == NULL) 
   {
-		fprintf(stderr, "talker: failed to create socket\n");
-		return 2;
+		perror("talker: failed to create socket\n");
+		exit(1);
 	}
+  #ifdef DEBUG 
+  printf("Connected to %s:%d.\n",Desthost,port);
+  #endif
 
   if(recv(sockfd, buf,sizeof(buf),0) == -1)
   {
@@ -104,71 +95,56 @@ int main(int argc, char *argv[])
     exit(1);
   }
 
-  printf("%s\n", buf);
-  if (strcmp(buf, "TEXT TCP 1.0\n\n") == 0 || strcmp(buf, "TEXT TCP 1.1\n\n") == 0)
-  {
-    printf("Matching messages");
-  }
-  else
+  if (strcmp(buf, "TEXT TCP 1.0\n\n") != 0)
   {
     perror("Not matching\n");
     exit(1);
   }
+  memset(buf, 0, sizeof(buf));
 
-  if (send(sockfd, e621, strlen(e621), 0) == -1)
+  if (send(sockfd, msg, strlen(msg), 0) == -1)
   {
     perror("Message not sent");
     exit(1);
   }
-  
-  double f1,f2,flotRes;
-  int i1,i2,intRes;
-
-  char lineBuffer[MAXDATASIZE];
-  if(recv(sockfd, lineBuffer, sizeof(lineBuffer), 0) == -1)
+  if(recv(sockfd, buf, sizeof(buf), 0) == -1)
   {
     perror("Error obtaining data");
   }
-  else
-  {
-    printf("Data obtained correctly: %s", lineBuffer);
-  }
-  printf("Print a command: ");
+ 
+  printf("ASSIGNMENT: ");
   
-  printf("%s \n",lineBuffer);
+  printf("%s",buf);
 
   char command[10];
 
-  
-  rv=sscanf(lineBuffer,"%s",command);
-
-  printf("Command: |%s|\n",command);
+  rv=sscanf(buf,"%s",command);
   
   if(command[0]=='f')
   {
-    printf("Float\t");
-    rv=sscanf(lineBuffer,"%s %lg %lg",command,&f1,&f2);
+    rv=sscanf(buf,"%s %lg %lg",command,&f1,&f2);
     if(strcmp(command,"fadd")==0){
-      flotRes=f1+f2;
+      floatRes=f1+f2;
     } 
     else if (strcmp(command, "fsub")==0)
     {
-      flotRes=f1-f2;
+      floatRes=f1-f2;
     } 
     else if (strcmp(command, "fmul")==0)
     {
-      flotRes=f1*f2;
+      floatRes=f1*f2;
     } 
     else if (strcmp(command, "fdiv")==0)
     {
-      flotRes=f1/f2;
+      floatRes=f1/f2;
     }
-    printf("%s %8.8g %8.8g = %8.8g\n",command,f1,f2,flotRes);
+    #ifdef DEBUG 
+    printf("Calculated the result to %8.8g\n",floatRes);
+    #endif
   } 
   else 
   {
-    printf("Int\t");
-    rv=sscanf(lineBuffer,"%s %d %d",command,&i1,&i2);
+    rv=sscanf(buf,"%s %d %d",command,&i1,&i2);
     if(strcmp(command,"add")==0)
     {
       intRes=i1+i2;
@@ -191,47 +167,44 @@ int main(int argc, char *argv[])
     {
       printf("No match\n");
     }
-
-    printf("%s %d %d = %d\n",command,i1,i2,intRes);
+    #ifdef DEBUG 
+    printf("Calculated the result to %d\n",intRes);
+    #endif
   }
+  memset(buf, 0, sizeof(buf));
+  
     if (command[0] == 'f')
     {
-      char floatSenderValue[MAXDATASIZE];
-      sprintf(floatSenderValue,"%8.8g\n",flotRes);
-      if (send(sockfd, floatSenderValue, strlen(floatSenderValue), 0) == -1)
+      sprintf(buf,"%8.8g\n",floatRes);
+      if (send(sockfd, buf, strlen(buf), 0) == -1)
       {
         perror("Error sending\n");
         exit(1);
-      }
-      else
-      {
-        printf("Sent: %s\n", floatSenderValue);
       }
     }
 
     else
     {
-      char intSenderValue[MAXDATASIZE];
-      sprintf(intSenderValue,"%d\n", intRes);
-      if (send(sockfd, intSenderValue, strlen(intSenderValue), 0) == -1)
+      sprintf(buf,"%d\n", intRes);
+      if (send(sockfd, buf, strlen(buf), 0) == -1)
       {
         perror("Error sending\n");
         exit(1);
       }
-      else
-      {
-        printf("Sent: %s\n", intSenderValue);
-      }
     }
+    memset(buf, 0, sizeof(buf));
 
-    if (recv(sockfd,buf,sizeof(buf),0) != 0)
+    if (recv(sockfd,buf,sizeof(buf),0) == -1)
     {
       perror("Failed to recieve\n");
     }
-    else
-    {
-      printf("%s\n", buf);
-    }
+      printf("%s ", buf);
+      if (command[0]=='f')
+      {
+        printf("(myresult=%8.8g)\n", floatRes);
+      }
+      else printf("(myresult=%d)\n", intRes);
+      
     
     
 
