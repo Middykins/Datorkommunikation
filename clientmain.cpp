@@ -12,7 +12,7 @@
 /* You will to add includes here */
 
 // Enable if you want debugging to be printed, see examble below.
-// Alternative, pass 
+// Alternative, pass
 #define DEBUG
 
 const int MAXDATASIZE = 256;
@@ -21,75 +21,80 @@ const int MAXDATASIZE = 256;
 
 int main(int argc, char *argv[])
 {
-  if (argc != 2) 
+  if (argc != 2)
   {
-    fprintf(stderr,"usage: %s host:port (%d)\n",argv[0],argc);
-	  exit(1);
-	}
+    fprintf(stderr, "usage: %s host:port (%d)\n", argv[0], argc);
+    exit(1);
+  }
   /*
     Read first input, assumes <ip>:<port> syntax, convert into one string (Desthost) and one integer (port). 
      Atm, works only on dotted notation, i.e. IPv4 and DNS. IPv6 does not work if its using ':'. 
   */
 
   char buf[MAXDATASIZE];
-  char delim[]=":";
+  char delim[] = ":";
   char msg[] = "OK\n";
-  char *Desthost=strtok(argv[1],delim);
-  char *Destport=strtok(NULL,delim);
-  double f1,f2,floatRes;
-  int i1,i2,intRes,rv,sockfd;
+  char *Desthost = strtok(argv[1], delim);
+  char *Destport = strtok(NULL, delim);
+  double f1, f2, floatRes;
+  int i1, i2, intRes, rv, sockfd;
   struct addrinfo hints, *servinfo, *p;
+  struct sockaddr_in client_addr;
+  socklen_t len;
+
+  if ((rv = getaddrinfo(Desthost, Destport, &hints, &servinfo)) != 0)
+  {
+    fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
+    return 1;
+  }
+
+  if (Desthost == NULL || Destport == NULL)
+  {
+    perror("Wrong format");
+    exit(1);
+  }
   
-  if ((rv = getaddrinfo(Desthost, Destport, &hints, &servinfo)) != 0) 
-  {
-		fprintf(stderr, "getaddrinfo: %s\n", gai_strerror(rv));
-		return 1;
-	}
 
-  if (Desthost==NULL)
-  {
-    Desthost = (char*)"0.0.0.0";
-  }
-  if (Destport==NULL)
-  {
-    Destport = (char*)"0";
-  }
+  memset(&hints, 0, sizeof hints);
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
 
-  int port=atoi(Destport);
-  printf("Host %s, and port %d.\n",Desthost,port);
-
-	memset(&hints, 0, sizeof hints);
-	hints.ai_family = AF_UNSPEC;
-	hints.ai_socktype = SOCK_STREAM;
-
-	for(p = servinfo; p != NULL; p = p->ai_next) 
+  for (p = servinfo; p != NULL; p = p->ai_next)
   {
-		if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) 
+    if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1)
     {
-			perror("talker: socket");
-			continue;
-		}
+      perror("Socket failed");
+      exit(1);
+    }
 
-    if (connect(sockfd,p->ai_addr, p->ai_addrlen) < 0 ) 
+    if (connect(sockfd, p->ai_addr, p->ai_addrlen) < 0)
     {
-	  perror("talker2: connect .\n");
-    close (sockfd);
-    continue;
+      perror("Connection failed");
+      close(sockfd);
+      exit(1);
+    }
+    break;
+  }
 
-	  }
-		break;
-	}
-
-	if (p == NULL) 
+  if (p == NULL)
   {
-		perror("talker: failed to create socket\n");
-		exit(1);
-	}
-  #ifdef DEBUG 
-  printf("Connected to %s:%d.\n",Desthost,port);
-  #endif
+    perror("talker: failed to create socket\n");
+    exit(1);
+  }
 
-  if(recv(sockfd, buf,sizeof(buf),0) == -1)
+  int port = atoi(Destport);
+  printf("Host %s, and port %d.\n", Desthost, port);
+
+  bzero(&client_addr, sizeof(client_addr));
+  len = sizeof(client_addr);
+  getsockname(sockfd, (struct sockaddr *)&client_addr, &len);
+
+#ifdef DEBUG
+  printf("Connected to %s:%d ", Desthost, port);
+  printf("local %s:%d\n", inet_ntoa(client_addr.sin_addr), (int)ntohs(client_addr.sin_port));
+#endif
+
+  if (recv(sockfd, buf, sizeof(buf), 0) == -1)
   {
     perror("RECV");
     exit(1);
@@ -107,108 +112,106 @@ int main(int argc, char *argv[])
     perror("Message not sent");
     exit(1);
   }
-  if(recv(sockfd, buf, sizeof(buf), 0) == -1)
+  if (recv(sockfd, buf, sizeof(buf), 0) == -1)
   {
     perror("Error obtaining data");
   }
- 
+
   printf("ASSIGNMENT: ");
-  
-  printf("%s",buf);
+
+  printf("%s", buf);
 
   char command[10];
 
-  rv=sscanf(buf,"%s",command);
-  
-  if(command[0]=='f')
+  rv = sscanf(buf, "%s", command);
+
+  if (command[0] == 'f')
   {
-    rv=sscanf(buf,"%s %lg %lg",command,&f1,&f2);
-    if(strcmp(command,"fadd")==0){
-      floatRes=f1+f2;
-    } 
-    else if (strcmp(command, "fsub")==0)
+    rv = sscanf(buf, "%s %lg %lg", command, &f1, &f2);
+    if (strcmp(command, "fadd") == 0)
     {
-      floatRes=f1-f2;
-    } 
-    else if (strcmp(command, "fmul")==0)
-    {
-      floatRes=f1*f2;
-    } 
-    else if (strcmp(command, "fdiv")==0)
-    {
-      floatRes=f1/f2;
+      floatRes = f1 + f2;
     }
-    #ifdef DEBUG 
-    printf("Calculated the result to %8.8g\n",floatRes);
-    #endif
-  } 
-  else 
+    else if (strcmp(command, "fsub") == 0)
+    {
+      floatRes = f1 - f2;
+    }
+    else if (strcmp(command, "fmul") == 0)
+    {
+      floatRes = f1 * f2;
+    }
+    else if (strcmp(command, "fdiv") == 0)
+    {
+      floatRes = f1 / f2;
+    }
+#ifdef DEBUG
+    printf("Calculated the result to %8.8g\n", floatRes);
+#endif
+  }
+  else
   {
-    rv=sscanf(buf,"%s %d %d",command,&i1,&i2);
-    if(strcmp(command,"add")==0)
+    rv = sscanf(buf, "%s %d %d", command, &i1, &i2);
+    if (strcmp(command, "add") == 0)
     {
-      intRes=i1+i2;
-    } 
-    else if (strcmp(command, "sub")==0)
+      intRes = i1 + i2;
+    }
+    else if (strcmp(command, "sub") == 0)
     {
-      intRes=i1-i2;
-      
-    } 
-    else if (strcmp(command, "mul")==0)
+      intRes = i1 - i2;
+    }
+    else if (strcmp(command, "mul") == 0)
     {
-      intRes=i1*i2;
-    } 
-    else if (strcmp(command, "div")==0)
+      intRes = i1 * i2;
+    }
+    else if (strcmp(command, "div") == 0)
     {
-      
-      intRes=i1/i2;
-    } 
-    else 
+
+      intRes = i1 / i2;
+    }
+    else
     {
       printf("No match\n");
     }
-    #ifdef DEBUG 
-    printf("Calculated the result to %d\n",intRes);
-    #endif
+#ifdef DEBUG
+    printf("Calculated the result to %d\n", intRes);
+#endif
   }
   memset(buf, 0, sizeof(buf));
-  
-    if (command[0] == 'f')
-    {
-      sprintf(buf,"%8.8g\n",floatRes);
-      if (send(sockfd, buf, strlen(buf), 0) == -1)
-      {
-        perror("Error sending\n");
-        exit(1);
-      }
-    }
 
-    else
+  if (command[0] == 'f')
+  {
+    sprintf(buf, "%8.8g\n", floatRes);
+    if (send(sockfd, buf, strlen(buf), 0) == -1)
     {
-      sprintf(buf,"%d\n", intRes);
-      if (send(sockfd, buf, strlen(buf), 0) == -1)
-      {
-        perror("Error sending\n");
-        exit(1);
-      }
+      perror("Error sending\n");
+      exit(1);
     }
-    memset(buf, 0, sizeof(buf));
+  }
 
-    if (recv(sockfd,buf,sizeof(buf),0) == -1)
+  else
+  {
+    sprintf(buf, "%d\n", intRes);
+    if (send(sockfd, buf, strlen(buf), 0) == -1)
     {
-      perror("Failed to recieve\n");
+      perror("Error sending\n");
+      exit(1);
     }
-      printf("%s ", buf);
-      if (command[0]=='f')
-      {
-        printf("(myresult=%8.8g)\n", floatRes);
-      }
-      else printf("(myresult=%d)\n", intRes);
-      
-    
-    
+  }
+  memset(buf, 0, sizeof(buf));
+
+  if (recv(sockfd, buf, sizeof(buf), 0) == -1)
+  {
+    perror("Failed to recieve\n");
+  }
+  char *outString = new char(strlen(buf) - 1);
+  outString = strncpy(outString, buf, strlen(buf) - 1);
+  printf("%s ", outString);
+  if (command[0] == 'f')
+  {
+    printf("(myresult=%8.8g)\n", floatRes);
+  }
+  else
+    printf("(myresult=%d)\n", intRes);
 
   /* Do magic */
-
-  
 }
